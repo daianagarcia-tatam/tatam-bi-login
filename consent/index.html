@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Autorizar Claude</title><style>
+body{font:16px system-ui;background:#f5f3ee;color:#25231f;margin:0;display:grid;place-items:center;min-height:100vh}
+main{background:white;border:1px solid #dedbd2;border-radius:16px;padding:28px;max-width:520px;width:calc(100% - 48px);box-shadow:0 12px 40px #0001}
+h1{font-size:24px;margin-top:0}label{display:block;margin:14px 0 6px}input{box-sizing:border-box;width:100%;padding:11px;border:1px solid #bbb;border-radius:8px}
+button{padding:11px 16px;border:0;border-radius:8px;margin:16px 8px 0 0;cursor:pointer}.primary{background:#25231f;color:white}.secondary{background:#eee}
+#error{color:#a22;white-space:pre-wrap}.muted{color:#666;font-size:14px}ul{padding-left:20px}
+</style></head><body><main>
+<h1>Conectar Claude con BI</h1><p class="muted">Ingresá con tu usuario de Supabase y revisá el acceso solicitado.</p>
+<section id="login"><label for="email">Email</label><input id="email" type="email" autocomplete="username"><label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password"><button class="primary" id="signin">Ingresar</button></section>
+<section id="consent" hidden><p><strong id="client"></strong> solicita acceso a:</p><ul id="scopes"></ul><button class="primary" id="approve">Autorizar</button><button class="secondary" id="deny">Rechazar</button></section>
+<p id="error"></p>
+</main><script type="module">
+// Datos públicos del proyecto (la clave publishable/anon es pública por diseño).
+const SUPABASE_URL = 'https://glehempwlshnevxodyly.supabase.co'
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_xLJzDoPvt7oHJsHle-ciGw__SDbIiTe'
+ 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+const sb = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
+const id = new URLSearchParams(location.search).get('authorization_id')
+const $ = s => document.querySelector(s)
+const err = $('#error'), login = $('#login'), consent = $('#consent')
+const fail = e => { err.textContent = e?.message || String(e) }
+async function render() {
+  if (!id) return fail('Falta authorization_id.')
+  const { data: { session } } = await sb.auth.getSession()
+  if (!session) { login.hidden = false; consent.hidden = true; return }
+  const { data, error } = await sb.auth.oauth.getAuthorizationDetails(id)
+  if (error) return fail(error)
+  if (!('authorization_id' in data)) { location.href = data.redirect_url; return }
+  login.hidden = true; consent.hidden = false
+  $('#client').textContent = data.client?.name || data.client_name || 'Claude'
+  const scopes = String(data.scope || 'Acceso autenticado de solo lectura').split(' ')
+  $('#scopes').replaceChildren(...scopes.map(s => { const li = document.createElement('li'); li.textContent = s; return li }))
+}
+$('#signin').onclick = async () => {
+  err.textContent = ''
+  const { error } = await sb.auth.signInWithPassword({ email: $('#email').value, password: $('#password').value })
+  error ? fail(error) : render()
+}
+$('#approve').onclick = async () => { const { data, error } = await sb.auth.oauth.approveAuthorization(id); error ? fail(error) : location.href = data.redirect_url }
+$('#deny').onclick = async () => { const { data, error } = await sb.auth.oauth.denyAuthorization(id); error ? fail(error) : location.href = data.redirect_url }
+render().catch(fail)
+</script></body></html>
+ 
